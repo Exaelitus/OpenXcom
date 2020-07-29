@@ -19,8 +19,10 @@ endif
 
 icondir = $(datadir)/pixmaps
 icon_DATA = \
-	res/openxcom.svg \
-	res/openxcom.png
+	res/openxcom_wide.svg \
+	res/openxcom_wide.png \
+	res/openxcom_block.svg \
+	res/openxcom_block.png
 
 desktopdir = $(datadir)/applications
 desktop_DATA = res/linux/openxcom.desktop
@@ -299,6 +301,8 @@ openxcom_SOURCES = \
 	src/Engine/SurfaceSet.h \
 	src/Engine/Timer.cpp \
 	src/Engine/Timer.h \
+	src/Engine/Unicode.cpp \
+	src/Engine/Unicode.h \
 	src/Engine/Zoom.cpp \
 	src/Engine/Zoom.h \
 	src/Geoscape/AlienBaseState.cpp \
@@ -448,6 +452,8 @@ openxcom_SOURCES = \
 	src/Menu/OptionsDefaultsState.h \
 	src/Menu/OptionsGeoscapeState.cpp \
 	src/Menu/OptionsGeoscapeState.h \
+	src/Menu/OptionsInformExtendedState.cpp \
+	src/Menu/OptionsInformExtendedState.h \
 	src/Menu/OptionsModsState.cpp \
 	src/Menu/OptionsModsState.h \
 	src/Menu/OptionsNoAudioState.cpp \

@@ -23,11 +23,9 @@
 #include "SavedGame.h"
 #include "ItemContainer.h"
 #include "Craft.h"
-#include "CraftWeapon.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/RuleCraft.h"
-#include "../Mod/RuleCraftWeapon.h"
 #include <climits>
 #include "BaseFacility.h"
 
@@ -198,21 +196,9 @@ void Production::startItem(Base * b, SavedGame * g, const Mod *m) const
 			{
 				if ((*c)->getRules()->getType() == iter->first)
 				{
-					// Unload craft
-					(*c)->unload(m);
-
-					// Clear hangar
-					for (std::vector<BaseFacility*>::iterator f = b->getFacilities()->begin(); f != b->getFacilities()->end(); ++f)
-					{
-						if ((*f)->getCraft() == (*c))
-						{
-							(*f)->setCraft(0);
-							break;
-						}
-					}
-
-					// Remove craft
-					b->getCrafts()->erase(c);
+					Craft *craft = *c;
+					b->removeCraft(craft, true);
+					delete craft;
 					break;
 				}
 			}

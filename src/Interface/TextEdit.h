@@ -19,6 +19,7 @@
  */
 #include "../Engine/InteractiveSurface.h"
 #include "Text.h"
+#include "../Engine/Unicode.h"
 
 namespace OpenXcom
 {
@@ -35,18 +36,18 @@ class TextEdit : public InteractiveSurface
 {
 private:
 	Text *_text, *_caret;
-	std::wstring _value;
+	UString _value;
 	bool _blink, _modal;
 	Timer *_timer;
-	wchar_t _ascii;
+	UCode _char;
 	size_t _caretPos;
 	TextEditConstraint _textEditConstraint;
 	ActionHandler _change;
 	State *_state;
 	/// Checks if a character will exceed the maximum width.
-	bool exceedsMaxWidth(wchar_t c);
+	bool exceedsMaxWidth(UCode c) const;
 	/// Checks if character is valid to be inserted at caret position.
-	bool isValidChar(Uint16 key);
+	bool isValidChar(UCode c) const;
 public:
 	/// Creates a new text edit with the specified size and position.
 	TextEdit(State *state, int width, int height, int x = 0, int y = 0);
@@ -63,9 +64,9 @@ public:
 	/// Initializes the text edit's resources.
 	void initText(Font *big, Font *small, Language *lang);
 	/// Sets the text's string.
-	void setText(const std::wstring &text);
+	void setText(const std::string &text);
 	/// Gets the text edit's string.
-	std::wstring getText() const;
+	std::string getText() const;
 	/// Sets the text edit's wordwrap setting.
 	void setWordWrap(bool wrap);
 	/// Sets the text edit's color invert setting.

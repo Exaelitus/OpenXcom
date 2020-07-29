@@ -26,7 +26,7 @@
 #include "../Engine/Logger.h"
 #include "../Mod/Mod.h"
 #include "../Engine/RNG.h"
-#include "../Engine/Language.h"
+#include "../Engine/Unicode.h"
 #include "../Engine/Exception.h"
 #include "../Engine/Options.h"
 #include "../Engine/CrossPlatform.h"
@@ -157,36 +157,56 @@ SavedGame::~SavedGame()
 	{
 		delete *i;
 	}
-	
+
 	delete _battleGame;
+}
+
+/**
+ * Removes version number from a mod name, if any.
+ * @param name Mod id from a savegame.
+ * @return Sanitized mod name.
+ */
+std::string SavedGame::sanitizeModName(const std::string &name)
+{
+	size_t versionInfoBreakPoint = name.find(" ver: ");
+	if (versionInfoBreakPoint == std::string::npos)
+	{
+		return name;
+	}
+	else
+	{
+		return name.substr(0, versionInfoBreakPoint);
+	}
 }
 
 static bool _isCurrentGameType(const SaveInfo &saveInfo, const std::string &curMaster)
 {
-	std::string gameMaster;
+	bool matchMasterMod = false;
 	if (saveInfo.mods.empty())
 	{
 		// if no mods listed in the savegame, this is an old-style
 		// savegame.  assume "xcom1" as the game type.
-		gameMaster = "xcom1";
+		matchMasterMod = (curMaster == "xcom1");
 	}
 	else
 	{
-		gameMaster = saveInfo.mods[0];
-		size_t pos = gameMaster.find(" ver: ");
-		if (pos != std::string::npos)
+		for (std::vector<std::string>::const_iterator i = saveInfo.mods.begin(); i != saveInfo.mods.end(); ++i)
 		{
-			gameMaster = gameMaster.substr(0, pos);
+			std::string name = SavedGame::sanitizeModName(*i);
+			if (name == curMaster)
+			{
+				matchMasterMod = true;
+				break;
+			}
 		}
 	}
 
-	if (gameMaster != curMaster)
+	if (!matchMasterMod)
 	{
 		Log(LOG_DEBUG) << "skipping save from inactive master: " << saveInfo.fileName;
-		return false;
 	}
 
-	return true;
+	return matchMasterMod;
 }
 
 /**
@@ -264,38 +284,38 @@ SaveInfo SavedGame::getSaveInfo(const std::string &file, Language *lang)
 	{
 		if (doc["name"])
 		{
-			save.displayName = Language::utf8ToWstr(doc["name"].as<std::string>());
+			save.displayName = doc["name"].as<std::string>();
 		}
 		else
 		{
-			save.displayName = Language::fsToWstr(CrossPlatform::noExt(file));
+			save.displayName = Unicode::convPathToUtf8(CrossPlatform::noExt(file));
 		}
 		save.reserved = false;
 	}
 
 	save.timestamp = CrossPlatform::getDateModified(fullname);
-	std::pair<std::wstring, std::wstring> str = CrossPlatform::timeToString(save.timestamp);
+	std::pair<std::string, std::string> str = CrossPlatform::timeToString(save.timestamp);
 	save.isoDate = str.first;
 	save.isoTime = str.second;
 	save.mods = doc["mods"].as<std::vector< std::string> >(std::vector<std::string>());
 
-	std::wostringstream details;
+	std::ostringstream details;
 	if (doc["turn"])
 	{
-		details << lang->getString("STR_BATTLESCAPE") << L": " << lang->getString(doc["mission"].as<std::string>()) << L", ";
+		details << lang->getString("STR_BATTLESCAPE") << ": " << lang->getString(doc["mission"].as<std::string>()) << ", ";
 		details << lang->getString("STR_TURN").arg(doc["turn"].as<int>());
 	}
 	else
 	{
 		GameTime time = GameTime(6, 1, 1, 1999, 12, 0, 0);
 		time.load(doc["time"]);
-		details << lang->getString("STR_GEOSCAPE") << L": ";
-		details << time.getDayString(lang) << L" " << lang->getString(time.getMonthString()) << L" " << time.getYear() << L", ";
-		details << time.getHour() << L":" << std::setfill(L'0') << std::setw(2) << time.getMinute();
+		details << lang->getString("STR_GEOSCAPE") << ": ";
+		details << time.getDayString(lang) << " " << lang->getString(time.getMonthString()) << " " << time.getYear() << ", ";
+		details << time.getHour() << ":" << std::setfill('0') << std::setw(2) << time.getMinute();
 	}
 	if (doc["ironman"].as<bool>(false))
 	{
-		details << L" (" << lang->getString("STR_IRONMAN") << L")";
+		details << " (" << lang->getString("STR_IRONMAN") << ")";
 	}
 	save.details = details.str();
 
@@ -319,21 +339,14 @@ void SavedGame::load(const std::string &filename, Mod *mod)
 
 	// Get brief save info
 	YAML::Node brief = file[0];
-	/*
-	std::string version = brief["version"].as<std::string>();
-	if (version != OPENXCOM_VERSION_SHORT)
-	{
-		throw Exception("Version mismatch");
-	}
-	*/
 	_time->load(brief["time"]);
 	if (brief["name"])
 	{
-		_name = Language::utf8ToWstr(brief["name"].as<std::string>());
+		_name = brief["name"].as<std::string>();
 	}
 	else
 	{
-		_name = Language::fsToWstr(filename);
+		_name = Unicode::convPathToUtf8(filename);
 	}
 	_ironman = brief["ironman"].as<bool>(_ironman);
 
@@ -548,9 +561,10 @@ void SavedGame::load(const std::string &filename, Mod *mod)
  */
 void SavedGame::save(const std::string &filename) const
 {
-	std::string s = Options::getMasterUserFolder() + filename;
-	std::ofstream sav(s.c_str());
-	if (!sav)
+	std::string savPath = Options::getMasterUserFolder() + filename;
+	std::string tmpPath = savPath + ".tmp";
+	std::ofstream tmp(tmpPath.c_str());
+	if (!tmp)
 	{
 		throw Exception("Failed to save " + filename);
 	}
@@ -559,7 +573,7 @@ void SavedGame::save(const std::string &filename) const
 
 	// Saves the brief game info used in the saves list
 	YAML::Node brief;
-	brief["name"] = Language::wstrToUtf8(_name);
+	brief["name"] = _name;
 	brief["version"] = OPENXCOM_VERSION_SHORT;
 	std::string git_sha = OPENXCOM_VERSION_GIT;
 	if (!git_sha.empty() && git_sha[0] ==  '.')
@@ -575,25 +589,13 @@ void SavedGame::save(const std::string &filename) const
 	}
 
 	// only save mods that work with the current master
-	std::vector<std::string> activeMods;
-	std::string curMasterId;
-	for (std::vector< std::pair<std::string, bool> >::iterator i = Options::mods.begin(); i != Options::mods.end(); ++i)
+	std::vector<const ModInfo*> activeMods = Options::getActiveMods();
+	std::vector<std::string> modsList;
+	for (std::vector<const ModInfo*>::const_iterator i = activeMods.begin(); i != activeMods.end(); ++i)
 	{
-		if (i->second)
-		{
-			ModInfo modInfo = Options::getModInfos().find(i->first)->second;
-			if (modInfo.isMaster())
-			{
-				curMasterId = i->first;
-			}
-			else if (!modInfo.getMaster().empty() && modInfo.getMaster() != curMasterId)
-			{
-				continue;
-			}
-			activeMods.push_back(i->first + " ver: " + modInfo.getVersion());
-		}
+		modsList.push_back((*i)->getId() + " ver: " + (*i)->getVersion());
 	}
-	brief["mods"] = activeMods;
+	brief["mods"] = modsList;
 	if (_ironman)
 		brief["ironman"] = _ironman;
 	out << brief;
@@ -677,15 +679,40 @@ void SavedGame::save(const std::string &filename) const
 		node["battleGame"] = _battleGame->save();
 	}
 	out << node;
+
+	// Save to temp
+	// If this goes wrong, the original save will be safe
+	tmp << out.c_str();
+	tmp.close();
+	if (!tmp)
+	{
+		throw Exception("Failed to save " + filename);
+	}
+
+	// If temp went fine, save for real
+	// If this goes wrong, they will have the temp
+	std::ofstream sav(savPath.c_str());
+	if (!sav)
+	{
+		throw Exception("Failed to save " + filename);
+	}
 	sav << out.c_str();
 	sav.close();
+	if (!sav)
+	{
+		throw Exception("Failed to save " + filename);
+	}
+
+	// Everything went fine, delete the temp
+	// We don't care if this fails
+	CrossPlatform::deleteFile(tmpPath);
 }
 
 /**
  * Returns the game's name shown in Save screens.
  * @return Save name.
  */
-std::wstring SavedGame::getName() const
+std::string SavedGame::getName() const
 {
 	return _name;
 }
@@ -694,7 +721,7 @@ std::wstring SavedGame::getName() const
  * Changes the game's name shown in Save screens.
  * @param name New name.
  */
-void SavedGame::setName(const std::wstring &name)
+void SavedGame::setName(const std::string &name)
 {
 	_name = name;
 }

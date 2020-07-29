@@ -27,12 +27,7 @@ namespace OpenXcom
 ModInfo::ModInfo(const std::string &path) :
 	 _path(path), _name(CrossPlatform::baseFilename(path)),
 	_desc("No description."), _version("1.0"), _author("unknown author"),
-	_id(_name), _master("xcom1"), _isMaster(false)
-{
-	// empty
-}
-
-ModInfo::~ModInfo()
+	_id(_name), _master("xcom1"), _isMaster(false), _reservedSpace(1)
 {
 	// empty
 }
@@ -47,6 +42,17 @@ void ModInfo::load(const std::string &filename)
 	_author   = doc["author"].as<std::string>(_author);
 	_id       = doc["id"].as<std::string>(_id);
 	_isMaster = doc["isMaster"].as<bool>(_isMaster);
+	_reservedSpace = doc["reservedSpace"].as<int>(_reservedSpace);
+	_requiredExtendedVersion = doc["requiredExtendedVersion"].as<std::string>(_requiredExtendedVersion);
+
+	if (_reservedSpace < 1)
+	{
+		_reservedSpace = 1;
+	}
+	else if (_reservedSpace > 100)
+	{
+		_reservedSpace = 100;
+	}
 
 	if (_isMaster)
 	{
@@ -55,6 +61,8 @@ void ModInfo::load(const std::string &filename)
 		_master = "";
 		// only masters can load external resource dirs
 		_externalResourceDirs = doc["loadResources"].as< std::vector<std::string> >(_externalResourceDirs);
+		// or basic resource definition
+		_resourceConfigFile = doc["resourceConfig"].as<std::string>(_resourceConfigFile);
 	}
 
 	_master = doc["master"].as<std::string>(_master);
@@ -64,14 +72,32 @@ void ModInfo::load(const std::string &filename)
 	}
 }
 
-const std::string &ModInfo::getPath()        const { return _path;     }
-const std::string &ModInfo::getName()        const { return _name;     }
-const std::string &ModInfo::getDescription() const { return _desc;     }
-const std::string &ModInfo::getVersion()     const { return _version;  }
-const std::string &ModInfo::getAuthor()      const { return _author;   }
-const std::string &ModInfo::getId()          const { return _id;       }
-const std::string &ModInfo::getMaster()      const { return _master;   }
-bool               ModInfo::isMaster()       const { return _isMaster; }
+const std::string &ModInfo::getPath()                    const { return _path;                    }
+const std::string &ModInfo::getName()                    const { return _name;                    }
+const std::string &ModInfo::getDescription()             const { return _desc;                    }
+const std::string &ModInfo::getVersion()                 const { return _version;                 }
+const std::string &ModInfo::getAuthor()                  const { return _author;                  }
+const std::string &ModInfo::getId()                      const { return _id;                      }
+const std::string &ModInfo::getMaster()                  const { return _master;                  }
+bool               ModInfo::isMaster()                   const { return _isMaster;                }
+const std::string &ModInfo::getRequiredExtendedVersion() const { return _requiredExtendedVersion; }
+const std::string &ModInfo::getResourceConfigFile()      const { return _resourceConfigFile;      }
+int                ModInfo::getReservedSpace()           const { return _reservedSpace;           }
+
+/**
+ * Checks if a given mod can be activated.
+ * It must either be:
+ * - a Master mod
+ * - a standalone mod (no master)
+ * - depend on the current Master mod
+ * @param curMaster Id of the active master mod.
+ * @return True if it's activable, false otherwise.
+*/
+bool ModInfo::canActivate(const std::string &curMaster) const
+{
+	return (isMaster() || getMaster().empty() || getMaster() == curMaster);
+}
+
 
 const std::vector<std::string> &ModInfo::getExternalResourceDirs() const { return _externalResourceDirs; }
 }

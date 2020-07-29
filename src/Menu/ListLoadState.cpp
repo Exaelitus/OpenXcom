@@ -43,7 +43,7 @@ ListLoadState::ListLoadState(OptionsOrigin origin) : ListGamesState(origin, 0, t
 	_btnCancel->setX(180);
 
 	add(_btnOld, "button", "saveMenus");
-	
+
 	// Set up objects
 	_txtTitle->setText(tr("STR_SELECT_GAME_TO_LOAD"));
 
@@ -83,16 +83,7 @@ void ListLoadState::lstSavesPress(Action *action)
 		const SaveInfo &saveInfo(_saves[_lstSaves->getSelectedRow()]);
 		for (std::vector<std::string>::const_iterator i = saveInfo.mods.begin(); i != saveInfo.mods.end(); ++i)
 		{
-			std::string name;
-			size_t versionInfoBreakPoint = (*i).find(" ver: ");
-			if (versionInfoBreakPoint == std::string::npos)
-			{
-				name = *i;
-			}
-			else
-			{
-				name = (*i).substr(0, versionInfoBreakPoint);
-			}
+			std::string name = SavedGame::sanitizeModName(*i);
 			if (std::find(Options::mods.begin(), Options::mods.end(), std::make_pair(name, true)) == Options::mods.end())
 			{
 				confirm = true;

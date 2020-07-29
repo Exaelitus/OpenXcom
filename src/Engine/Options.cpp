@@ -52,6 +52,7 @@ std::vector<std::string> _userList;
 std::map<std::string, std::string> _commandLine;
 std::vector<OptionInfo> _info;
 std::map<std::string, ModInfo> _modInfos;
+std::string _masterMod;
 
 /**
  * Sets up the options by creating their OptionInfo metadata.
@@ -140,6 +141,8 @@ void create()
 	_info.push_back(OptionInfo("musicAlwaysLoop", &musicAlwaysLoop, false));
 	_info.push_back(OptionInfo("touchEnabled", &touchEnabled, false));
 	_info.push_back(OptionInfo("rootWindowedMode", &rootWindowedMode, false));
+	_info.push_back(OptionInfo("lazyLoadResources", &lazyLoadResources, true));
+	_info.push_back(OptionInfo("backgroundMute", &backgroundMute, false));
 
 	// advanced options
 	_info.push_back(OptionInfo("playIntro", &playIntro, true, "STR_PLAYINTRO", "STR_GENERAL"));
@@ -179,7 +182,7 @@ void create()
 	_info.push_back(OptionInfo("retainCorpses", &retainCorpses, false, "STR_RETAINCORPSES", "STR_GEOSCAPE"));
 	_info.push_back(OptionInfo("fieldPromotions", &fieldPromotions, false, "STR_FIELDPROMOTIONS", "STR_GEOSCAPE"));
 	_info.push_back(OptionInfo("meetingPoint", &meetingPoint, false, "STR_MEETINGPOINT", "STR_GEOSCAPE"));
-	
+
 	_info.push_back(OptionInfo("battleDragScrollInvert", &battleDragScrollInvert, false, "STR_DRAGSCROLLINVERT", "STR_BATTLESCAPE")); // true drags away from the cursor, false drags towards (like a grab)
 	_info.push_back(OptionInfo("sneakyAI", &sneakyAI, false, "STR_SNEAKYAI", "STR_BATTLESCAPE"));
 	_info.push_back(OptionInfo("battleUFOExtenderAccuracy", &battleUFOExtenderAccuracy, false, "STR_BATTLEUFOEXTENDERACCURACY", "STR_BATTLESCAPE"));
@@ -200,7 +203,7 @@ void create()
 	_info.push_back(OptionInfo("skipNextTurnScreen", &skipNextTurnScreen, false, "STR_SKIPNEXTTURNSCREEN", "STR_BATTLESCAPE"));
 	_info.push_back(OptionInfo("noAlienPanicMessages", &noAlienPanicMessages, false, "STR_NOALIENPANICMESSAGES", "STR_BATTLESCAPE"));
 	_info.push_back(OptionInfo("alienBleeding", &alienBleeding, false, "STR_ALIENBLEEDING", "STR_BATTLESCAPE"));
-	
+
 	// controls
 	_info.push_back(OptionInfo("keyOk", &keyOk, SDLK_RETURN, "STR_OK", "STR_GENERAL"));
 	_info.push_back(OptionInfo("keyCancel", &keyCancel, SDLK_ESCAPE, "STR_CANCEL", "STR_GENERAL"));
@@ -297,10 +300,8 @@ static bool _gameIsInstalled(const std::string &gameName)
 	// look for game data in either the data or user directories
 	std::string dataGameFolder = CrossPlatform::searchDataFolder(gameName);
 	std::string userGameFolder = _userFolder + gameName;
-	return (CrossPlatform::folderExists(dataGameFolder)
-		&& CrossPlatform::getFolderContents(dataGameFolder).size() > 8)
-	    || (CrossPlatform::folderExists(userGameFolder)
-		&& CrossPlatform::getFolderContents(userGameFolder).size() > 8);
+	return (CrossPlatform::folderExists(dataGameFolder)	&& CrossPlatform::getFolderContents(dataGameFolder).size() > 8)
+	    || (CrossPlatform::folderExists(userGameFolder)	&& CrossPlatform::getFolderContents(userGameFolder).size() > 8);
 }
 
 static bool _ufoIsInstalled()
@@ -380,6 +381,10 @@ void loadArgs(int argc, char *argv[])
 				{
 					_configFolder = CrossPlatform::endPath(argv[i]);
 				}
+				else if (argname == "master")
+				{
+					_masterMod = argv[i];
+				}
 				else
 				{
 					//save this command line option for now, we will apply it later
@@ -410,8 +415,10 @@ bool showHelp(int argc, char *argv[])
 	help << "        use PATH as the default User Folder instead of auto-detecting" << std::endl << std::endl;
 	help << "-cfg PATH  or  -config PATH" << std::endl;
 	help << "        use PATH as the default Config Folder instead of auto-detecting" << std::endl << std::endl;
+	help << "-master MOD" << std::endl;
+	help << "        set MOD to the current master mod (eg. -master xcom2)" << std::endl << std::endl;
 	help << "-KEY VALUE" << std::endl;
-	help << "        set option KEY to VALUE instead of default/loaded value (eg. -displayWidth 640)" << std::endl << std::endl;
+	help << "        override option KEY with VALUE (eg. -displayWidth 640)" << std::endl << std::endl;
 	help << "-help" << std::endl;
 	help << "-?" << std::endl;
 	help << "        show command-line help" << std::endl;
@@ -499,7 +506,7 @@ static void _scanMods(const std::string &modsDir)
  * and finding and loading any existing ones.
  * @param argc Number of arguments.
  * @param argv Array of argument strings.
- * @return Was initialized.
+ * @return Do we start the game?
  */
 bool init(int argc, char *argv[])
 {
@@ -525,6 +532,18 @@ bool init(int argc, char *argv[])
 	{
 		Log(LOG_WARNING) << "Couldn't create log file, switching to stderr";
 	}
+
+	Log(LOG_INFO) << "OpenXcom Version: " << OPENXCOM_VERSION_SHORT << OPENXCOM_VERSION_GIT;
+#ifdef _WIN32
+	Log(LOG_INFO) << "Platform: Windows";
+#elif __APPLE__
+	Log(LOG_INFO) << "Platform: OSX";
+#elif  __ANDROID_API__
+	Log(LOG_INFO) << "Platform: Android";
+#else
+	Log(LOG_INFO) << "Platform: Unix-like";
+#endif
+
 	Log(LOG_INFO) << "Data folder is: " << _dataFolder;
 	Log(LOG_INFO) << "Data search is: ";
 	for (std::vector<std::string>::iterator i = _dataList.begin(); i != _dataList.end(); ++i)
@@ -538,11 +557,14 @@ bool init(int argc, char *argv[])
 	return true;
 }
 
-void updateMods()
+void refreshMods()
 {
-	// pick up stuff in common before-hand
-	FileMap::load("common", CrossPlatform::searchDataFolder("common"), true);
+	if (reload)
+	{
+		_masterMod = "";
+	}
 
+	_modInfos.clear();
 	std::string modPath = CrossPlatform::searchDataFolder("standard");
 	Log(LOG_INFO) << "Scanning standard mods in '" << modPath << "'...";
 	_scanMods(modPath);
@@ -558,7 +580,7 @@ void updateMods()
 			|| (i->first == "xcom1" && !_ufoIsInstalled())
 			|| (i->first == "xcom2" && !_tftdIsInstalled()))
 		{
-			Log(LOG_INFO) << "removing references to missing mod: " << i->first;
+			Log(LOG_VERBOSE) << "removing references to missing mod: " << i->first;
 			i = mods.erase(i);
 			continue;
 		}
@@ -579,6 +601,10 @@ void updateMods()
 				found = true;
 				if (i->second.isMaster())
 				{
+					if (!_masterMod.empty())
+					{
+						j->second = (_masterMod == j->first);
+					}
 					if (j->second)
 					{
 						if (!activeMaster.empty())
@@ -640,38 +666,40 @@ void updateMods()
 		{
 			Log(LOG_INFO) << "no master already active; activating " << inactiveMaster;
 			std::find(mods.begin(), mods.end(), std::pair<std::string, bool>(inactiveMaster, false))->second = true;
+			_masterMod = inactiveMaster;
 		}
 	}
-
-	mapResources();
-	userSplitMasters();
+	else
+	{
+		_masterMod = activeMaster;
+	}
+	save();
 }
 
+void updateMods()
+{
+	// pick up stuff in common before-hand
+	FileMap::load("common", CrossPlatform::searchDataFolder("common"), true);
+
+	refreshMods();
+	mapResources();
+	userSplitMasters();
+
+	Log(LOG_INFO) << "Active mods:";
+	std::vector<const ModInfo*> activeMods = Options::getActiveMods();
+	for (std::vector<const ModInfo*>::const_iterator i = activeMods.begin(); i != activeMods.end(); ++i)
+	{
+		Log(LOG_INFO) << "- " << (*i)->getId() << " v" << (*i)->getVersion();
+	}
+}
+
+/**
+ * Gets the currently active master mod.
+ * @return Mod id.
+ */
 std::string getActiveMaster()
 {
-	std::string curMaster;
-	for (std::vector< std::pair<std::string, bool> >::const_iterator i = mods.begin(); i != mods.end(); ++i)
-	{
-		if (!i->second)
-		{
-			// we're only looking for active mods
-			continue;
-		}
-
-		ModInfo modInfo = _modInfos.find(i->first)->second;
-		if (!modInfo.isMaster())
-		{
-			continue;
-		}
-
-		curMaster = modInfo.getId();
-		break;
-	}
-	if (curMaster.empty())
-	{
-		Log(LOG_ERROR) << "cannot determine current active master";
-	}
-	return curMaster;
+	return _masterMod;
 }
 
 static void _loadMod(const ModInfo &modInfo, std::set<std::string> circDepCheck)
@@ -681,7 +709,7 @@ static void _loadMod(const ModInfo &modInfo, std::set<std::string> circDepCheck)
 		Log(LOG_WARNING) << "circular dependency found in master chain: " << modInfo.getId();
 		return;
 	}
-	
+
 	FileMap::load(modInfo.getId(), modInfo.getPath(), false);
 	for (std::vector<std::string>::const_iterator i = modInfo.getExternalResourceDirs().begin(); i != modInfo.getExternalResourceDirs().end(); ++i)
 	{
@@ -721,7 +749,6 @@ void mapResources()
 	Log(LOG_INFO) << "Mapping resource files...";
 	FileMap::clear();
 
-	std::string curMaster = getActiveMaster();
 	for (std::vector< std::pair<std::string, bool> >::reverse_iterator i = mods.rbegin(); i != mods.rend(); ++i)
 	{
 		if (!i->second)
@@ -731,9 +758,9 @@ void mapResources()
 		}
 
 		const ModInfo &modInfo = _modInfos.find(i->first)->second;
-		if (!modInfo.isMaster() && !modInfo.getMaster().empty() && modInfo.getMaster() != curMaster)
+		if (!modInfo.canActivate(_masterMod))
 		{
-			Log(LOG_VERBOSE) << "skipping mod for non-current master: " << i->first << "(" << modInfo.getMaster() << " != " << curMaster << ")";
+			Log(LOG_VERBOSE) << "skipping mod for non-current master: " << i->first << "(" << modInfo.getMaster() << " != " << _masterMod << ")";
 			continue;
 		}
 
@@ -804,24 +831,17 @@ void setFolders()
 /**
  * Splits the game's User folder by master mod,
  * creating a subfolder for each one and moving
- * the apppropriate user data among them.
+ * the appropriate user data among them.
  */
 void userSplitMasters()
 {
 	// get list of master mods
-	const std::map<std::string, ModInfo> &modInfos(Options::getModInfos());
-	if (modInfos.empty())
-	{
-		return;
-	}
 	std::vector<std::string> masters;
-	for (std::vector< std::pair<std::string, bool> >::const_iterator i = Options::mods.begin(); i != Options::mods.end(); ++i)
+	for (std::map<std::string, ModInfo>::const_iterator i = _modInfos.begin(); i != _modInfos.end(); ++i)
 	{
-		std::string modId = i->first;
-		ModInfo modInfo = modInfos.find(modId)->second;
-		if (modInfo.isMaster())
+		if (i->second.isMaster())
 		{
-			masters.push_back(modId);
+			masters.push_back(i->first);
 		}
 	}
 
@@ -844,8 +864,8 @@ void userSplitMasters()
 			{
 				std::string srcFile = _userFolder + (*j);
 				YAML::Node doc = YAML::LoadFile(srcFile);
-				std::vector<std::string> mods = doc["mods"].as<std::vector< std::string> >(std::vector<std::string>());
-				if (std::find(mods.begin(), mods.end(), (*i)) != mods.end())
+				std::vector<std::string> srcMods = doc["mods"].as<std::vector< std::string> >(std::vector<std::string>());
+				if (std::find(srcMods.begin(), srcMods.end(), (*i)) != srcMods.end())
 				{
 					std::string dstFile = masterFolder + CrossPlatform::PATH_SEPARATOR + (*j);
 					CrossPlatform::moveFile(srcFile, dstFile);
@@ -896,8 +916,9 @@ void updateOptions()
 /**
  * Loads options from a YAML file.
  * @param filename YAML filename.
+ * @return Was the loading successful?
  */
-void load(const std::string &filename)
+bool load(const std::string &filename)
 {
 	std::string s = _configFolder + filename + ".cfg";
 	try
@@ -906,7 +927,7 @@ void load(const std::string &filename)
 		// Ignore old options files
 		if (doc["options"]["NewBattleMission"])
 		{
-			return;
+			return false;
 		}
 		for (std::vector<OptionInfo>::iterator i = _info.begin(); i != _info.end(); ++i)
 		{
@@ -928,7 +949,9 @@ void load(const std::string &filename)
 	catch (YAML::Exception &e)
 	{
 		Log(LOG_WARNING) << e.what();
+		return false;
 	}
+	return true;
 }
 
 void writeNode(const YAML::Node& node, YAML::Emitter& emitter)
@@ -980,15 +1003,16 @@ void writeNode(const YAML::Node& node, YAML::Emitter& emitter)
 /**
  * Saves options to a YAML file.
  * @param filename YAML filename.
+ * @return Was the saving successful?
  */
-void save(const std::string &filename)
+bool save(const std::string &filename)
 {
 	std::string s = _configFolder + filename + ".cfg";
 	std::ofstream sav(s.c_str());
 	if (!sav)
 	{
 		Log(LOG_WARNING) << "Failed to save " << filename << ".cfg";
-		return;
+		return false;
 	}
 	try
 	{
@@ -1016,8 +1040,15 @@ void save(const std::string &filename)
 	catch (YAML::Exception &e)
 	{
 		Log(LOG_WARNING) << e.what();
+		return false;
 	}
 	sav.close();
+	if (!sav)
+	{
+		Log(LOG_WARNING) << "Failed to save " << filename << ".cfg";
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -1077,7 +1108,7 @@ std::string getConfigFolder()
  */
 std::string getMasterUserFolder()
 {
-	return _userFolder + getActiveMaster() + CrossPlatform::PATH_SEPARATOR;
+	return _userFolder + _masterMod + CrossPlatform::PATH_SEPARATOR;
 }
 
 /**
@@ -1087,6 +1118,34 @@ std::string getMasterUserFolder()
 const std::vector<OptionInfo> &getOptionInfo()
 {
 	return _info;
+}
+
+/**
+ * Returns a list of currently active mods.
+ * They must be enabled and activable.
+ * @sa ModInfo::canActivate
+ * @return List of info for the active mods.
+ */
+std::vector<const ModInfo *> getActiveMods()
+{
+	std::vector<const ModInfo*> activeMods;
+	for (std::vector< std::pair<std::string, bool> >::iterator i = mods.begin(); i != mods.end(); ++i)
+	{
+		if (i->second)
+		{
+			const ModInfo *info = &_modInfos.at(i->first);
+			if (info->canActivate(_masterMod))
+			{
+				activeMods.push_back(info);
+			}
+		}
+	}
+	return activeMods;
+}
+
+ModInfo getModInfo(const std::string &id)
+{
+	return _modInfos.find(id)->second;
 }
 
 /**

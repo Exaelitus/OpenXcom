@@ -109,7 +109,7 @@ private:
 	std::string _type;
 	std::string _rank;
 	std::string _race;
-	std::wstring _name;
+	std::string _name;
 	UnitStats _stats;
 	int _standHeight, _kneelHeight, _floatHeight;
 	std::vector<int> _deathSound;
@@ -128,6 +128,7 @@ private:
 	bool _hidingForTurn, _floorAbove, _respawn;
 	MovementType _movementType;
 	std::vector<std::pair<Uint8, Uint8> > _recolor;
+	bool _capturable;
 
 	/// Helper function initing recolor vector.
 	void setRecolor(int basicLook, int utileLook, int rankLook);
@@ -308,6 +309,7 @@ public:
 	bool checkAmmo();
 	/// Check if this unit is in the exit area
 	bool isInExitArea(SpecialTileType stt = START_POINT) const;
+	bool liesInExitArea(Tile *tile, SpecialTileType stt = START_POINT) const;
 	/// Gets the unit height taking into account kneeling/standing.
 	int getHeight() const;
 	/// Gets the unit floating elevation.
@@ -347,7 +349,7 @@ public:
 	/// Gets the unit's armor.
 	Armor *getArmor() const;
 	/// Gets the unit's name.
-	std::wstring getName(Language *lang, bool debugAppendId = false) const;
+	std::string getName(Language *lang, bool debugAppendId = false) const;
 	/// Gets the unit's stats.
 	UnitStats *getBaseStats();
 	/// Get the unit's stand height.
@@ -502,7 +504,8 @@ public:
 	bool getHitState();
 	/// reset the unit hit state.
 	void resetHitState();
-
+	/// Gets whether this unit can be captured alive (applies to aliens).
+	bool getCapturable() const;
 };
 
 }
